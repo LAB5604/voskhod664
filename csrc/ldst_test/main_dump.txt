@@ -1,0 +1,53 @@
+
+main.exec:     file format elf64-littleriscv
+
+
+Disassembly of section .text:
+
+0000000080000000 <_start>:
+    80000000:	00020117          	auipc	sp,0x20
+    80000004:	00010113          	mv	sp,sp
+    80000008:	00000293          	li	t0,0
+    8000000c:	00100313          	li	t1,1
+    80000010:	00200393          	li	t2,2
+    80000014:	00300e13          	li	t3,3
+    80000018:	01c0006f          	j	80000034 <push>
+
+000000008000001c <pop>:
+    8000001c:	00013503          	ld	a0,0(sp) # 80020000 <__freertos_irq_stack_top>
+    80000020:	00813583          	ld	a1,8(sp)
+    80000024:	01013603          	ld	a2,16(sp)
+    80000028:	01813683          	ld	a3,24(sp)
+    8000002c:	02010113          	addi	sp,sp,32
+    80000030:	01c0006f          	j	8000004c <halt>
+
+0000000080000034 <push>:
+    80000034:	fe010113          	addi	sp,sp,-32
+    80000038:	00513023          	sd	t0,0(sp)
+    8000003c:	00613423          	sd	t1,8(sp)
+    80000040:	00713823          	sd	t2,16(sp)
+    80000044:	01c13c23          	sd	t3,24(sp)
+    80000048:	fd5ff06f          	j	8000001c <pop>
+
+000000008000004c <halt>:
+    8000004c:	0000006f          	j	8000004c <halt>
+
+Disassembly of section .stack:
+
+000000008001e000 <__freertos_irq_stack_top-0x2000>:
+	...
+
+Disassembly of section .riscv.attributes:
+
+0000000000000000 <.riscv.attributes>:
+   0:	1941                	addi	s2,s2,-16
+   2:	0000                	unimp
+   4:	7200                	ld	s0,32(a2)
+   6:	7369                	lui	t1,0xffffa
+   8:	01007663          	bgeu	zero,a6,14 <__stack_size-0x1fec>
+   c:	0000000f          	fence	unknown,unknown
+  10:	7205                	lui	tp,0xfffe1
+  12:	3676                	fld	fa2,376(sp)
+  14:	6934                	ld	a3,80(a0)
+  16:	7032                	0x7032
+  18:	0030                	addi	a2,sp,8

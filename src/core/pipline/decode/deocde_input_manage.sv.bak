@@ -1,0 +1,241 @@
+`include "prv664_define.sv"
+`include "prv664_config.sv"
+//////////////////////////////////////////////////////////////////////////////////////////////////
+//  Date    : 2022                                                                              //
+//  Author  : Jack.Pan                                                                          //
+//  Desc    : Decode unit input manage, generate hand-shake and validwork manage for this unit  //
+//                                                                                              //
+//  Version : 0.0(file initialize)                                                              //
+//////////////////////////////////////////////////////////////////////////////////////////////////
+module decode_input_manage(
+    input  wire                 clk_i,
+    input  wire                 arst_i,
+
+    pip_ifu_interface.sif       decode_input,
+
+    pip_flush_interface.slave   pip_flush_sif,
+
+    output logic [31:0]         instr0_o,       instr1_o,
+    output logic [`XLEN-1:0]    instr0_pc_o,    instr1_pc_o,
+    output logic                instr0_valid_o, instr1_valid_o,
+    input logic                 ready_i,
+
+);
+
+    reg         next_flag;          //current fetch group need 2-cycle to decode, rather than 1
+    reg         ptr;                //pointer to the next position of decode group, see NOTE
+    logic [3:0] instr0_sel, instr1_sel, instr0_sel_final, instr1_sel_final;
+/*********************************************************************************
+                                    NOTE
+    在每个fitchgroup中都会有最多4条指令，但decode单元一次只能同时解码两条，因此设置"_nextflag"标志位
+    来指示需要将读指针移到fetchgroup的高两条指令。
+
+    ptr的作用是确定发送出去译码的指令的顺序，考虑下面图示结构：
+        ---> [ Decode queue 0 ]
+        ---> [ Decode queue 1 ]
+    在每个cycle中，decode完成的指令可能是一条或两条，如果是一次decode完成两个指令，则两条指令同时
+    都可以被写进queue，但是，如果一次只有一条指令被decode（fetch group中只有一条指令有效）则需要按照
+    0-1-0-1的顺序写进Decode queue 0和1中，这样在queue的输出端就可以根据写进去的先后顺序依次取出指令，
+    避免引起顺序混乱。
+    当每次写入1个指令时候，ptr会加1，写入两条指令时，ptr会加2。
+    例：当前ptr=0，有两条指令A和B被decode（A在程序中的位置比B更靠前）：
+        指令A应该被译码写入到Decode queue0中，B应该被写入到1中，这样在读出端可以根据先读0后读1的顺序
+        保证A和B的发射顺序。
+    例：当前ptr=1，其余情况和上例相同
+        在ptr=1的情况下，说明之前只有一条指令写到了Decode queue 0中，假设此指令是C，那么queue中的指令
+        排列情况是下图：
+                --> [C]         #decode queue 0 
+                --> []          #decode queue 1
+        若不做处理，A写入到0，B写入到1，则queue中的排列情况：
+                --> [AC]         #decode queue 0 
+                --> [B]          #decode queue 1
+        读出端按照约定顺序读出后，程序变成了：C-B-A，而我们希望的顺序是C-A-B，引起了错误。
+        因此需要设置一个ptr来指示写的位置，指令A应该被写入Decode queue1中，B被写入0中：
+                --> [BC]         #decode queue 0 
+                --> [A]          #decode queue 1
+        读出端按照约定顺序读出后，顺序为C-A-B，是正确的顺序。
+***********************************************************************************/
+//------------------------------------ERROR display-------------------------------
+`ifdef DECODE_ERROR_REPORT
+    always@(posedge clk_i)begin
+        if(decode_input.valid)begin
+            case(decode_input.validword)
+                4'b0001, 4'b0011, 4'b0111, 4'b1111, 4'b0010, 4'b0110, 4'b1110, 4'b0100, 4'b1100, 4'b1000:
+                begin
+
+                end
+                default :
+                begin
+                    $display("DECODE ERROR : invalid validword in fetch group, validwork=%b", validword);
+                end
+            endcase
+        end
+    end
+`endif
+
+always_comb
+    //--------------------generate instruction0/1 select--------------------
+    if(decode_input.valid)begin
+        case(decode_input.validword)
+            4'b0001, 4'b0011, 4'b0111, 4'b1111:
+            begin
+                if(next_flag)begin
+                    instr0_sel = 4'b1000 : 4'b0100;
+                    instr1_sel = 4'b0100 : 4'b1000;
+                end
+                else begin
+                    instr0_sel = 4'b0001;
+                    instr1_sel = 4'b0010;
+                end
+            end
+            4'b0010, 4'b0110, 4'b1110:
+            begin
+                if(next_flag)begin
+                    instr0_sel = 4'b1000;
+                    instr1_sel = 4'b0000;       //no select
+                end
+                else begin
+                    instr0_sel = 4'b0010;
+                    instr1_sel = 4'b0100;
+                end
+            end
+            4'b0100, 4'b1100:
+            begin
+                instr0_sel = 4'b0100;
+                instr1_sel = 4'b1000;
+            end
+            4'b1000:
+            begin
+                instr0_sel = 4'b1000;
+                instr1_sel = 4'b0000;
+            end
+            default :
+            begin
+                instr0_sel = 4'b0000;
+                instr1_sel = 4'b0000;
+            end
+        endcase
+    end
+    else begin          //current input is not valid, select nothing
+        instr0_sel = 4'b0000;
+        instr1_sel = 4'b0000;
+    end
+
+    instr0_sel_final = ptr ? instr1_sel : instr0_sel;
+    instr1_sel_final = ptr ? instr0_sel : instr1_sel;
+
+    //------------------------instruction0 select-----------------------
+    case(instr0_sel_final)
+        4'b0001:
+        begin
+            instr0_o        = decode_input.instr[31:0];
+            instr0_pc_o     = decode_input.grouppc;
+            instr0_valid_o  = decode_input.validword[0];
+        end
+        4'b0010:
+        begin
+            instr0_o        = decode_input.instr[63:32];
+            instr0_pc_o     = decode_input.grouppc + 4;
+            instr0_valid_o  = decode_input.validword[1];
+        end
+        4'b0100:
+        begin
+            instr0_o        = decode_input.instr[95:64];
+            instr0_pc_o     = decode_input.grouppc + 8;
+            instr0_valid_o  = decode_input.validword[2];
+        end
+        4'b1000:
+        begin
+            instr0_o        = decode_input.instr[127:96];
+            instr0_pc_o     = decode_input.grouppc + 12;
+            instr0_valid_o  = decode_input.validword[3];
+        end
+        default :
+        begin
+            instr0_o        = 'hx;
+            instr0_pc_o     = 'hx;
+            instr0_valid_o  = 1'b0;
+        end
+    endcase
+    //------------------------instruction0 select-----------------------
+    case(instr1_sel_final)
+        4'b0001:
+        begin
+            instr1_o        = decode_input.instr[31:0];
+            instr1_pc_o     = decode_input.grouppc;
+            instr1_valid_o  = decode_input.validword[0];
+        end
+        4'b0010:
+        begin
+            instr1_o        = decode_input.instr[63:32];
+            instr1_pc_o     = decode_input.grouppc + 4;
+            instr1_valid_o  = decode_input.validword[1];
+        end
+        4'b0100:
+        begin
+            instr1_o        = decode_input.instr[95:64];
+            instr1_pc_o     = decode_input.grouppc + 8;
+            instr1_valid_o  = decode_input.validword[2];
+        end
+        4'b1000:
+        begin
+            instr1_o        = decode_input.instr[127:96];
+            instr1_pc_o     = decode_input.grouppc + 12;
+            instr1_valid_o  = decode_input.validword[3];
+        end
+        default :
+        begin
+            instr1_o        = 'hx;
+            instr1_pc_o     = 'hx;
+            instr1_valid_o  = 1'b0;
+        end
+    endcase    
+
+    //------------------------generate hand shake------------------------
+    if(decode_input.valid)begin    
+        case(decode_input.validword)
+            4'b0111, 4'b1110, 4'b1111 :     //in this case, we need 2-cycle(or more) to decode these instructions
+            begin
+                if(next_flag & ready_i)begin
+                    decode_input.ready = 1'b1;
+                end
+                else begin
+                    decode_input.ready = 1'b0;
+                end
+            end
+            default :
+            begin
+                decode_input.ready = ready_i;
+            end
+        endcase
+    end
+    else begin
+        decode_input.ready = ready_i;
+    end
+end
+
+always_ff @ (posedge clk_i or posedge arst_i)begin
+    if(arst_i)begin
+        next_flag <= 1'b0;
+        ptr       <= 1'b0;
+    end
+    else if(pip_flush_sif.flush)begin
+        next_flag <= 1'b0;
+        ptr       <= 1'b0;
+    end
+    else begin
+        if(next_flag)
+            next_flag <= ready_i ? 1'b0 : next_flag;        //if next stage is ready, then reset flag
+        end
+        else if(decode_input.valid)begin
+            case(decode_input.validword)
+                4'b0111, 4'b1111, 4'b1110: next_flag <= ready_i;
+            endcase
+        end
+        if(ready_i)begin
+            ptr = ptr + instr0_valid_o + instr1_valid_o;    //
+        end
+    end
+end
+
+endmodule

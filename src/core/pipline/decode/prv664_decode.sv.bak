@@ -1,0 +1,349 @@
+`include "prv664_define.sv"
+`include "prv664_config.sv"
+//////////////////////////////////////////////////////////////////////////////////////////////////
+//  Date    : 2022                                                                              //
+//  Author  : Jack.Pan                                                                          //
+//  Desc    : Decode unit for prv664 pipline, decode instructions into micro-ops and push them  //
+//            into rob and decode-queue                                                         //
+//  Version : 0.0(file initialize)                                                              //
+//////////////////////////////////////////////////////////////////////////////////////////////////
+module prv664_decode(
+
+    input wire                      clk_i,
+    input wire                      arst_i,
+//------------------global flush signal----------------
+    pip_flush_interface.slave       pip_flush_sif,
+//-------------------from last stage--------------------
+    pip_ifu_interface.slave         pip_ifu_sif,       //slave interface of ifu
+//--------------------to next stage--------------------
+    pip_rob_interface.master        pip_rob_mif0,
+    pip_rob_interface.master        pip_rob_mif1,
+    pip_decode_interface.master     pip_decode_mif0,
+    pip_decode_interface.master     pip_decode_mif1
+
+);
+//--------------------decode input manage will find out up to 2 instruction in a fetchgroup in one cycle---------
+    
+    wire [31:0]         instr       [1:0];
+    wire [`XLEN-1:0]    instr_pc    [1:0];
+    wire [1:0]          instr_valid;
+
+//--------------------push the micro-ops into rob/decode queue---------------
+
+    logic               push_ready;         //push is ready, request next beat of instruction
+    logic [1:0]         push_en;            //push enable, push micro-ops into rob/decode queue
+    
+    wire                decode_queue0_full, decode_queue0_empty;
+    wire                decode_queue1_full, decode_queue1_empty;
+
+    pip_decode_interface   decode0_outif;   //decode0 micro-op output
+    pip_decode_interface   decode1_outif;
+
+decode_input_manage     decode_input_manage(
+    .clk_i              (clk_i),
+    .arst_i             (arst_i),
+
+    .decode_input       (pip_ifu_sif),
+
+    .pip_flush_sif      (pip_flush_sif),
+
+    .instr0_o           (instr[0]),       
+    .instr1_o           (instr[1]),
+    .instr0_pc_o        (instr_pc[0]),       
+    .instr1_pc_o        (instr_pc[1]),
+    .instr0_valid_o     (instr_valid[0]), 
+    .instr1_valid_o     (instr_valid[1]),
+    .ready_i            (push_ready),
+
+);
+
+//--------------------------2 decode unit--------------------------
+//         decode unit decode the instr into micro ops
+decode                  decode0(
+    .clk_i              (clk_i),
+    .arst_i             (arst_i),
+
+    .csr_tsr_i          (pip_flush_sif.csr_tsr),
+    .csr_tvm_i          (pip_flush_sif.csr_tvm),
+
+    .instr_i            (instr[0]),
+    .instrpc_i          (instr_pc[0]),
+    .instrpriv_i        (pip_ifu_sif.priv),
+    .instr_valid_i      (instr_valid[0]),
+    .instr_pageflt_i    (pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTPAGEFLT]),
+    .instr_accflt_i     (pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTACCFLT]),
+    .instr_addrmis_i    (pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTADDRMIS]),
+    .instr_id_i         ({1'b0,pip_rob_mif0.entrynum[6:0]}),
+//---------------------decode output-------------------
+
+    .decode_mif         (decode0_outif)
+
+);
+decode                  decode1(
+    .clk_i              (clk_i),
+    .arst_i             (arst_i),
+
+    .csr_tsr_i          (pip_flush_sif.csr_tsr),
+    .csr_tvm_i          (pip_flush_sif.csr_tvm),
+
+    .instr_i            (instr[1]),
+    .instrpc_i          (instr_pc[1])
+    .instrpriv_i        (pip_ifu_sif.priv),
+    .instr_valid_i      (instr_valid[1]),
+    .instr_pageflt_i    (pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTPAGEFLT]),
+    .instr_accflt_i     (pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTACCFLT]),
+    .instr_addrmis_i    (pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTADDRMIS]),
+    .instr_id_i         ({1'b1,pip_rob_mif1.entrynum[6:0]}),
+//---------------------decode output-------------------
+
+    .decode_mif         (decode1_outif)
+
+);
+
+//--------------------decode queue---------------------
+always_comb begin
+    if(!pip_rob_mif0.full & !pip_rob_mif1.full & !decode_queue0_full & !decode_queue1_full)begin    //if rob and decode queue have space
+        push_en[0] = decode0_outif.valid;
+        push_en[1] = decode1_outif.valid;
+        push_ready = 1'b1;
+    end
+    else begin
+        push_en[0] = 1'b0;
+        push_en[1] = 1'b0;
+        push_ready = 1'b0;
+    end
+
+    pip_rob_mif0.pc             =   instr_pc[0];
+    pip_rob_mif0.instr_accflt   =   pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTPAGEFLT];
+    pip_rob_mif0.instr_pageflt  =   pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTACCFLT];
+    pip_rob_mif0.instr_addrmis  =   pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTADDRMIS];
+    pip_rob_mif0.mret           =   decode0_outif.mret;
+    pip_rob_mif0.sret           =   decode0_outif.sret;
+    pip_rob_mif0.ecall          =   decode0_outif.ecall;
+    pip_rob_mif0.ebreak         =   decode0_outif.ebreak;
+    pip_rob_mif0.rdindex        =   decode0_outif.rdindex;
+    pip_rob_mif0.frdindex       =   decode0_outif.frdindex;
+    pip_rob_mif0.csrindex       =   decode0_outif.csrindex;
+    pip_rob_mif0.csren          =   decode0_outif.csren;
+    pip_rob_mif0.fflagen        =   decode0_outif.fflagen;
+    pip_rob_mif0.write          =   push_en[0];
+    pip_rob_mif0.complete       =   (decode0_outif.disp_dest==`DECODE_DISP_NONE);
+
+    pip_rob_mif1.pc             =   instr_pc[1];
+    pip_rob_mif1.instr_accflt   =   pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTPAGEFLT];
+    pip_rob_mif1.instr_pageflt  =   pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTACCFLT];
+    pip_rob_mif1.instr_addrmis  =   pip_ifu_sif.errtype[`ERRORTYPE_BIT_INSTADDRMIS];
+    pip_rob_mif1.mret           =   decode1_outif.mret;
+    pip_rob_mif1.sret           =   decode1_outif.sret;
+    pip_rob_mif1.ecall          =   decode1_outif.ecall;
+    pip_rob_mif1.ebreak         =   decode1_outif.ebreak;
+    pip_rob_mif1.rdindex        =   decode1_outif.rdindex;
+    pip_rob_mif1.frdindex       =   decode1_outif.frdindex;
+    pip_rob_mif1.csrindex       =   decode1_outif.csrindex;
+    pip_rob_mif1.csren          =   decode1_outif.csren;
+    pip_rob_mif1.fflagen        =   decode1_outif.fflagen;
+    pip_rob_mif1.write          =   push_en[1];
+    pip_rob_mif1.complete       =   (decode1_outif.disp_dest==`DECODE_DISP_NONE);
+    
+end
+
+//----------------------------------Decode queue--------------------------------
+// decode queue stores the micro-ops after decode, waiting for dispatch stage to use
+// the read port of this module is connect directly to dispatch
+
+fifo1r1w#(
+
+    .DWID           (5+10+5+1+5+1+5+1+20+5+1+5+1+5+1+5+1+12+1+1+8+4+3+11),
+    .DDEPTH         (4)         //decode queue is short, not need too long 
+
+)decode_queue0(
+
+    .clk            (clk_i),
+    .rst            (arst_i | pip_flush_sif.flush),
+    .ren            (pip_decode_mif0.ready),
+    .wen            (push_en[0]),
+    .wdata          ({  
+                        decode0_outif.opcode,
+                        decode0_outif.funct,
+                        decode0_outif.rs1index,
+                        decode0_outif.rs1en,
+                        decode0_outif.rs2index,
+                        decode0_outif.rs2en,
+                        decode0_outif.rdindex,
+                        decode0_outif.rden,
+                        decode0_outif.pc,
+                        decode0_outif.imm,
+                        decode0_outif.frs1index,
+                        decode0_outif.frs1en,
+                        decode0_outif.frs2index,
+                        decode0_outif.frs2en,
+                        decode0_outif.frs3index,
+                        decode0_outif.frs3en,
+                        decode0_outif.frdindex,
+                        decode0_outif.frden,
+                        decode0_outif.ecode
+                        decode0_outif.csrindex,
+                        decode0_outif.csren,
+                        decode0_outif.fflagen,
+                        decode0_outif.itag,
+                        decode0_outif.disp_dest,
+                        decode0_outif.valid,
+                        decode0_outif.ready,
+                        decode0_outif.branchtype,
+                        decode0_outif.fence,
+                        decode0_outif.fencei,
+                        decode0_outif.fencevma,
+                        decode0_outif.ecall,
+                        decode0_outif.ebreak,
+                        decode0_outif.mret,
+                        decode0_outif.sret,
+                        decode0_outif.illins,
+                        decode0_outif.instrpageflt,
+                        decode0_outif.instraccflt,
+                        decode0_outif.instraddrmis
+                    }),
+    .rdata          ({  
+                        pip_decode_mif0.opcode,
+                        pip_decode_mif0.funct,
+                        pip_decode_mif0.rs1index,
+                        pip_decode_mif0.rs1en,
+                        pip_decode_mif0.rs2index,
+                        pip_decode_mif0.rs2en,
+                        pip_decode_mif0.rdindex,
+                        pip_decode_mif0.rden,
+                        pip_decode_mif0.pc
+                        pip_decode_mif0.imm,
+                        pip_decode_mif0.frs1index,
+                        pip_decode_mif0.frs1en,
+                        pip_decode_mif0.frs2index,
+                        pip_decode_mif0.frs2en,
+                        pip_decode_mif0.frs3index,
+                        pip_decode_mif0.frs3en,
+                        pip_decode_mif0.frdindex,
+                        pip_decode_mif0.frden,
+                        pip_decode_mif0.ecode
+                        pip_decode_mif0.csrindex,
+                        pip_decode_mif0.csren,
+                        pip_decode_mif0.fflagen,
+                        pip_decode_mif0.itag,
+                        pip_decode_mif0.disp_dest,
+                        pip_decode_mif0.valid,
+                        pip_decode_mif0.ready,
+                        pip_decode_mif0.branchtype,
+                        pip_decode_mif0.fence,
+                        pip_decode_mif0.fencei,
+                        pip_decode_mif0.fencevma,
+                        pip_decode_mif0.ecall,
+                        pip_decode_mif0.ebreak,
+                        pip_decode_mif0.mret,
+                        pip_decode_mif0.sret,
+                        pip_decode_mif0.illins,
+                        pip_decode_mif0.instrpageflt,
+                        pip_decode_mif0.instraccflt,
+                        pip_decode_mif0.instraddrmis
+                    }),
+    .full           (decode_queue0_full),
+    .empty          (decode_queue0_full)
+
+);
+
+fifo1r1w#(
+    
+    .DWID           (5+10+5+1+5+1+5+1+20+5+1+5+1+5+1+5+1+12+1+1+8+4+3+11),
+    .DDEPTH         (4)         //decode queue is short, not need too long 
+
+)decode_queue1(
+
+    .clk            (clk_i),
+    .rst            (arst_i | pip_flush_sif.flush),
+    .ren            (pip_decode_mif1.ready),
+    .wen            (push_en[1]),
+    .wdata          ({  
+                        decode1_outif.opcode,
+                        decode1_outif.funct,
+                        decode1_outif.rs1index,
+                        decode1_outif.rs1en,
+                        decode1_outif.rs2index,
+                        decode1_outif.rs2en,
+                        decode1_outif.rdindex,
+                        decode1_outif.rden,
+                        decode1_outif.pc,
+                        decode1_outif.imm,
+                        decode1_outif.frs1index,
+                        decode1_outif.frs1en,
+                        decode1_outif.frs2index,
+                        decode1_outif.frs2en,
+                        decode1_outif.frs3index,
+                        decode1_outif.frs3en,
+                        decode1_outif.frdindex,
+                        decode1_outif.frden,
+                        decode1_outif.ecode
+                        decode1_outif.csrindex,
+                        decode1_outif.csren,
+                        decode1_outif.fflagen,
+                        decode1_outif.itag,
+                        decode1_outif.disp_dest,
+                        decode1_outif.valid,
+                        decode1_outif.ready,
+                        decode1_outif.branchtype,
+                        decode1_outif.fence,
+                        decode1_outif.fencei,
+                        decode1_outif.fencevma,
+                        decode1_outif.ecall,
+                        decode1_outif.ebreak,
+                        decode1_outif.mret,
+                        decode1_outif.sret,
+                        decode1_outif.illins,
+                        decode1_outif.instrpageflt,
+                        decode1_outif.instraccflt,
+                        decode1_outif.instraddrmis
+                    }),
+    .rdata          ({  
+                        pip_decode_mif1.opcode,
+                        pip_decode_mif1.funct,
+                        pip_decode_mif1.rs1index,
+                        pip_decode_mif1.rs1en,
+                        pip_decode_mif1.rs2index,
+                        pip_decode_mif1.rs2en,
+                        pip_decode_mif1.rdindex,
+                        pip_decode_mif1.rden,
+                        pip_decode_mif1.pc,
+                        pip_decode_mif1.imm,
+                        pip_decode_mif1.frs1index,
+                        pip_decode_mif1.frs1en,
+                        pip_decode_mif1.frs2index,
+                        pip_decode_mif1.frs2en,
+                        pip_decode_mif1.frs3index,
+                        pip_decode_mif1.frs3en,
+                        pip_decode_mif1.frdindex,
+                        pip_decode_mif1.frden,
+                        pip_decode_mif1.ecode
+                        pip_decode_mif1.csrindex,
+                        pip_decode_mif1.csren,
+                        pip_decode_mif1.fflagen,
+                        pip_decode_mif1.itag,
+                        pip_decode_mif1.disp_dest,
+                        pip_decode_mif1.valid,
+                        pip_decode_mif1.ready,
+                        pip_decode_mif1.branchtype,
+                        pip_decode_mif1.fence,
+                        pip_decode_mif1.fencei,
+                        pip_decode_mif1.fencevma,
+                        pip_decode_mif1.ecall,
+                        pip_decode_mif1.ebreak,
+                        pip_decode_mif1.mret,
+                        pip_decode_mif1.sret,
+                        pip_decode_mif1.illins,
+                        pip_decode_mif1.instrpageflt,
+                        pip_decode_mif1.instraccflt,
+                        pip_decode_mif1.instraddrmis
+                    }),
+    .full           (decode_queue1_full),
+    .empty          (decode_queue1_empty)
+
+);
+
+assign pip_decode_mif0.valid = !decode_queue0_empty;
+assign pip_decode_mif1.valid - !decode_queue0_empty;
+
+endmodule

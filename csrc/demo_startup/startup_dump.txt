@@ -1,0 +1,116 @@
+
+startup.exec:     file format elf64-littleriscv
+
+
+Disassembly of section .text:
+
+0000000080000000 <_start>:
+    80000000:	017d82b7          	lui	t0,0x17d8
+    80000004:	8402829b          	addiw	t0,t0,-1984
+
+0000000080000008 <L0>:
+    80000008:	fff28293          	addi	t0,t0,-1 # 17d7fff <VGA_BLINK_BASE+0x17cdfff>
+    8000000c:	fe504ee3          	bgtz	t0,80000008 <L0>
+
+0000000080000010 <clean>:
+    80000010:	00008537          	lui	a0,0x8
+    80000014:	000095b7          	lui	a1,0x9
+    80000018:	000012b7          	lui	t0,0x1
+    8000001c:	9602829b          	addiw	t0,t0,-1696
+    80000020:	01700393          	li	t2,23
+
+0000000080000024 <L1>:
+    80000024:	00050023          	sb	zero,0(a0) # 8000 <VGA_TXT_BASE>
+    80000028:	00758023          	sb	t2,0(a1) # 9000 <VGA_COLOR_BASE>
+    8000002c:	00150513          	addi	a0,a0,1
+    80000030:	00158593          	addi	a1,a1,1
+    80000034:	fff28293          	addi	t0,t0,-1 # fff <DEFAULT_COLOR+0xfe8>
+    80000038:	fe5046e3          	bgtz	t0,80000024 <L1>
+
+000000008000003c <clean_blank>:
+    8000003c:	0000a537          	lui	a0,0xa
+    80000040:	12c00293          	li	t0,300
+
+0000000080000044 <L2>:
+    80000044:	00050023          	sb	zero,0(a0) # a000 <VGA_BLINK_BASE>
+    80000048:	00150513          	addi	a0,a0,1
+    8000004c:	fff28293          	addi	t0,t0,-1
+    80000050:	fe504ae3          	bgtz	t0,80000044 <L2>
+
+0000000080000054 <puts>:
+    80000054:	00000517          	auipc	a0,0x0
+    80000058:	02c50513          	addi	a0,a0,44 # 80000080 <msg>
+    8000005c:	000085b7          	lui	a1,0x8
+    80000060:	05000293          	li	t0,80
+
+0000000080000064 <L3>:
+    80000064:	00054303          	lbu	t1,0(a0)
+    80000068:	00658023          	sb	t1,0(a1) # 8000 <VGA_TXT_BASE>
+    8000006c:	00150513          	addi	a0,a0,1
+    80000070:	00158593          	addi	a1,a1,1
+    80000074:	fff28293          	addi	t0,t0,-1
+    80000078:	fe5046e3          	bgtz	t0,80000064 <L3>
+
+000000008000007c <halt>:
+    8000007c:	0000006f          	j	8000007c <halt>
+
+Disassembly of section .data:
+
+0000000080000080 <msg>:
+    80000080:	2020                	fld	fs0,64(s0)
+    80000082:	2020                	fld	fs0,64(s0)
+    80000084:	6556                	ld	a0,336(sp)
+    80000086:	7372                	ld	t1,312(sp)
+    80000088:	6f69                	lui	t5,0x1a
+    8000008a:	206e                	fld	ft0,216(sp)
+    8000008c:	2e30                	fld	fa2,88(a2)
+    8000008e:	2030                	fld	fa2,64(s0)
+    80000090:	6f56                	ld	t5,336(sp)
+    80000092:	6f686b73          	csrrsi	s6,0x6f6,16
+    80000096:	3664                	fld	fs1,232(a2)
+    80000098:	3436                	fld	fs0,360(sp)
+    8000009a:	5320                	lw	s0,96(a4)
+    8000009c:	6c61                	lui	s8,0x18
+    8000009e:	7579                	lui	a0,0xffffe
+    800000a0:	3174                	fld	fa3,224(a0)
+    800000a2:	7020                	ld	s0,96(s0)
+    800000a4:	616c                	ld	a1,192(a0)
+    800000a6:	6674                	ld	a3,200(a2)
+    800000a8:	206d726f          	jal	tp,800d72ae <__freertos_irq_stack_top+0xb72ae>
+    800000ac:	4942                	lw	s2,16(sp)
+    800000ae:	4320534f          	fnmadd.d	ft6,ft0,fs2,fs0,unknown
+    800000b2:	7279706f          	j	80097fd8 <__freertos_irq_stack_top+0x77fd8>
+    800000b6:	6769                	lui	a4,0x1a
+    800000b8:	7468                	ld	a0,232(s0)
+    800000ba:	4c20                	lw	s0,88(s0)
+    800000bc:	4241                	li	tp,16
+    800000be:	3635                	addiw	a2,a2,-19
+    800000c0:	3430                	fld	fa2,104(s0)
+    800000c2:	3220                	fld	fs0,96(a2)
+    800000c4:	3130                	fld	fa2,96(a0)
+    800000c6:	2d38                	fld	fa4,88(a0)
+    800000c8:	3032                	fld	ft0,296(sp)
+    800000ca:	3332                	fld	ft6,296(sp)
+    800000cc:	202e                	fld	ft0,200(sp)
+    800000ce:	2020                	fld	fs0,64(s0)
+	...
+
+Disassembly of section .stack:
+
+000000008001e000 <__freertos_irq_stack_top-0x2000>:
+	...
+
+Disassembly of section .riscv.attributes:
+
+0000000000000000 <.riscv.attributes>:
+   0:	1941                	addi	s2,s2,-16
+   2:	0000                	unimp
+   4:	7200                	ld	s0,32(a2)
+   6:	7369                	lui	t1,0xffffa
+   8:	01007663          	bgeu	zero,a6,14 <DEFAULT_COLOR-0x3>
+   c:	0000000f          	fence	unknown,unknown
+  10:	7205                	lui	tp,0xfffe1
+  12:	3676                	fld	fa2,376(sp)
+  14:	6934                	ld	a3,80(a0)
+  16:	7032                	0x7032
+  18:	0030                	addi	a2,sp,8

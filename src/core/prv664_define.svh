@@ -1,0 +1,38 @@
+`define XLEN                        64
+////////////////////////////////////////////////////////////////////////////////////////////
+//                    user channel of MMU&Cache                                           //
+////////////////////////////////////////////////////////////////////////////////////////////
+`define MMU_USER_W                  67      //XLEN+3 NO TOUCH IT
+`define CACHE_USER_W                67      //XLEN+3 NO TOUCH IT
+////////////////////////////////////////////////////////////////////////////////////////////
+//                                   BTB bit define                                       //
+////////////////////////////////////////////////////////////////////////////////////////////
+`define BTB_BIT_BRANCH              0
+`define BTB_BIT_CALL                1
+`define BTB_BIT_RETURN              2
+////////////////////////////////////////////////////////////////////////////////////////////
+//                           decode defines                                               //
+////////////////////////////////////////////////////////////////////////////////////////////
+`define DECODE_DISP_NONE            0
+`define DECODE_DISP_BRANCH          2
+`define DECODE_DISP_SHORTINT        4
+`define DECODE_DISP_LOADSTORE       6
+`define DECODE_DISP_MULDIV          8
+`define DECODE_DISP_FPU             10
+`define DECODE_DISP_SYSMAG          12              //sysmanage执行单元运行此指令
+////////////////////////////////////////////////////////////////////////////////////////////
+//                           fs domain value define                                       //
+////////////////////////////////////////////////////////////////////////////////////////////
+`define FS_OFF                      0
+`define FS_INITIAL                  1
+`define FS_CLEAN                    2
+`define FS_DIRTY                    3
+////////////////////////////////////////////////////////////////////////////////////////////
+//                           error bit in errtype define                                  //
+////////////////////////////////////////////////////////////////////////////////////////////
+`define ERRORTYPE_BIT_LOADACCFLT    0
+`define ERRORTYPE_BIT_LOADPAGEFLT   1
+`define ERRORTYPE_BIT_LOADADDRMIS   2
+`define ERRORTYPE_BIT_STOREACCFLT   3
+`define ERRORTYPE_BIT_STOREPAGEFLT  4
+`define ERRORTYPE_BIT_STOREADDRMIS  5

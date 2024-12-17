@@ -1,0 +1,54 @@
+
+timer.exec:     file format elf64-littleriscv
+
+
+Disassembly of section .text:
+
+0000000080000000 <_start>:
+    80000000:	00000293          	li	t0,0
+    80000004:	40000537          	lui	a0,0x40000
+    80000008:	00553023          	sd	t0,0(a0) # 40000000 <MTIME>
+    8000000c:	70828293          	addi	t0,t0,1800
+    80000010:	00553423          	sd	t0,8(a0)
+    80000014:	00000297          	auipc	t0,0x0
+    80000018:	02428293          	addi	t0,t0,36 # 80000038 <timer_isp>
+    8000001c:	30529073          	csrw	mtvec,t0
+    80000020:	08000293          	li	t0,128
+    80000024:	30429073          	csrw	mie,t0
+    80000028:	000022b7          	lui	t0,0x2
+    8000002c:	8882829b          	addiw	t0,t0,-1912
+    80000030:	30029073          	csrw	mstatus,t0
+
+0000000080000034 <L0>:
+    80000034:	0000006f          	j	80000034 <L0>
+
+0000000080000038 <timer_isp>:
+    80000038:	30200073          	mret
+
+Disassembly of section .data:
+
+000000008000003c <.data>:
+    8000003c:	0000                	unimp
+	...
+
+Disassembly of section .stack:
+
+000000008001e000 <__freertos_irq_stack_top-0x2000>:
+	...
+
+Disassembly of section .riscv.attributes:
+
+0000000000000000 <.riscv.attributes>:
+   0:	1d41                	addi	s10,s10,-16
+   2:	0000                	unimp
+   4:	7200                	ld	s0,32(a2)
+   6:	7369                	lui	t1,0xffffa
+   8:	01007663          	bgeu	zero,a6,14 <DEFAULT_COLOR-0x3>
+   c:	00000013          	nop
+  10:	7205                	lui	tp,0xfffe1
+  12:	3676                	fld	fa2,376(sp)
+  14:	6934                	ld	a3,80(a0)
+  16:	7032                	0x7032
+  18:	0030                	addi	a2,sp,8
+  1a:	0108                	addi	a0,sp,128
+  1c:	0b0a                	slli	s6,s6,0x2
